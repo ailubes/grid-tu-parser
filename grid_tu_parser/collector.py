@@ -64,13 +64,20 @@ def _parse_date(value: str | None) -> str | None:
     return text or None
 
 
-def parse_registry_html(html: str, source_url: str, source_page: int, fetched_at: datetime) -> list[RawTURecord]:
+def parse_registry_html(
+    html: str,
+    source_url: str,
+    source_page: int,
+    fetched_at: datetime,
+) -> list[RawTURecord]:
     soup = BeautifulSoup(html, "html.parser")
     table = soup.find("table")
     if table is None:
         return []
 
-    header_cells = table.find_all("th")
+    thead = table.find("thead")
+    header_row = thead.find("tr") if thead is not None else table.find("tr")
+    header_cells = header_row.find_all(["th", "td"], recursive=False) if header_row is not None else []
     header_map: dict[int, str] = {}
     for idx, cell in enumerate(header_cells):
         key = _header_key(cell.get_text(" ", strip=True))
@@ -82,25 +89,33 @@ def parse_registry_html(html: str, source_url: str, source_page: int, fetched_at
         cells = row.find_all("td")
         if not cells:
             continue
+
         values = [normalize_text(cell.get_text(" ", strip=True)) for cell in cells]
+        # Some live registry rows include a leading service/control cell that has no
+        # corresponding header. Align data cells to the right edge of the header row.
+        offset = max(0, len(values) - len(header_cells)) if header_cells else 0
         mapped: dict[str, str | None] = {key: None for key in _HEADER_KEYS}
         for idx, key in header_map.items():
-            if idx < len(values):
-                mapped[key] = values[idx] or None
-        records.append(RawTURecord(
-            source="lvivoblenergo",
-            source_url=source_url,
-            source_page=source_page,
-            fetched_at=fetched_at,
-            tu_number=mapped["tu_number"],
-            tu_date=_parse_date(mapped["tu_date"]),
-            installation_type=mapped["installation_type"],
-            connection_point_raw=mapped["connection_point_raw"],
-            voltage_raw=mapped["voltage_raw"],
-            requested_power_kw=_parse_power(mapped["requested_power_kw"]),
-            connection_type=mapped["connection_type"],
-            rem=mapped["rem"],
-        ))
+            value_idx = idx + offset
+            if value_idx < len(values):
+                mapped[key] = values[value_idx] or None
+
+        records.append(
+            RawTURecord(
+                source="lvivoblenergo",
+                source_url=source_url,
+                source_page=source_page,
+                fetched_at=fetched_at,
+                tu_number=mapped["tu_number"],
+                tu_date=_parse_date(mapped["tu_date"]),
+                installation_type=mapped["installation_type"],
+                connection_point_raw=mapped["connection_point_raw"],
+                voltage_raw=mapped["voltage_raw"],
+                requested_power_kw=_parse_power(mapped["requested_power_kw"]),
+                connection_type=mapped["connection_type"],
+                rem=mapped["rem"],
+            )
+        )
     return records
 
 
@@ -124,7 +139,12 @@ def _discover_last_page(html: str, fallback: int) -> int:
     return max(pages)
 
 
-def _fetch_with_retries(session: requests.Session, url: str, timeout: float, retries: int) -> requests.Response:
+def _fetch_with_retries(
+    session: requests.Session,
+    url: str,
+    timeout: float,
+    retries: int,
+) -> requests.Response:
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
@@ -143,24 +163,40 @@ def _fetch_with_retries(session: requests.Session, url: str, timeout: float, ret
     raise last_exc
 
 
-def collect_pages(base_url: str, start_page: int = 1, end_page: int | None = None, *, timeout: float = 15.0, retries: int = 2, session: requests.Session | None = None) -> list[RawTURecord]:
+def collect_pages(
+    base_url: str,
+    start_page: int = 1,
+    end_page: int | None = None,
+    *,
+    timeout: float = 15.0,
+    retries: int = 2,
+    session: requests.Session | None = None,
+) -> list[RawTURecord]:
     own_session = session is None
     session = session or requests.Session()
     records: list[RawTURecord] = []
+
     try:
         page = start_page
         discovered_end = end_page
         while True:
             if discovered_end is not None and page > discovered_end:
                 break
+
             url = _url_for_page(base_url, page)
             try:
                 response = _fetch_with_retries(session, url, timeout, retries)
             except requests.RequestException as exc:
-                raise CollectorError(f"Failed to fetch registry page {page}: {exc}", failed_page=page, partial_records=records.copy()) from exc
+                raise CollectorError(
+                    f"Failed to fetch registry page {page}: {exc}",
+                    failed_page=page,
+                    partial_records=records.copy(),
+                ) from exc
+
             fetched_at = datetime.now(timezone.utc)
             page_records = parse_registry_html(response.text, url, page, fetched_at)
             records.extend(page_records)
+
             if discovered_end is None:
                 discovered_end = _discover_last_page(response.text, page)
             if page >= discovered_end:
@@ -169,4 +205,5 @@ def collect_pages(base_url: str, start_page: int = 1, end_page: int | None = Non
     finally:
         if own_session:
             session.close()
+
     return records
