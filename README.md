@@ -61,6 +61,35 @@ The percentile comparison is calculated across all mapped nodes in the same inpu
 
 Records without a `canonical_node_id` are excluded from node totals and reported separately as unmapped. `mixed` and `unknown` activity types are retained as `other` rather than being forced into generation or load.
 
+## PostgreSQL / Supabase daily pipeline
+
+The production pipeline stores current TU data plus daily node snapshots in PostgreSQL. It creates or updates these tables from the idempotent `schema.sql` file:
+
+- `tu_raw`
+- `tu_parsed`
+- `grid_nodes`
+- `node_metrics`
+- `pipeline_runs`
+
+Run locally with a PostgreSQL connection string in the environment:
+
+```bash
+export DATABASE_URL='postgresql://...'
+python scripts/update_grid_data.py
+```
+
+The command applies `schema.sql`, collects the Lvivoblenergo registry, parses and upserts TU rows, recalculates node metrics, writes the daily snapshot, and records the pipeline run status.
+
+### GitHub Actions deployment
+
+The workflow `.github/workflows/update-grid-data.yml` runs every day at `00:00 UTC` and can also be started manually with `workflow_dispatch`.
+
+Create a GitHub Actions repository secret named `DATABASE_URL` containing the PostgreSQL connection string. Do not commit database passwords, API keys, or connection strings to the repository.
+
+After the secret is configured, open **Actions → Update grid data → Run workflow** once to initialize the schema and perform the first collection. Subsequent runs are scheduled automatically.
+
+The pipeline is idempotent: TU rows use deterministic record keys, current nodes use `canonical_node_id`, and daily metrics use `(canonical_node_id, snapshot_date)`. Re-running the same day updates the same snapshot instead of creating duplicates.
+
 ## Important limitation
 
 Technical conditions are commitments/permissions to connect and are not the same as actual physical load, generation, BESS dispatch, or available grid capacity. The normalized data is suitable for connection-pressure screening, not for claiming a real-time network reserve.
