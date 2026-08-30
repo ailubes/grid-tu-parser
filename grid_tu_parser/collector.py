@@ -86,13 +86,16 @@ def parse_registry_html(
 
     records: list[RawTURecord] = []
     for row in table.find_all("tr"):
-        cells = row.find_all("td")
+        if row is header_row:
+            continue
+        cells = row.find_all(["th", "td"], recursive=False)
         if not cells:
             continue
 
         values = [normalize_text(cell.get_text(" ", strip=True)) for cell in cells]
-        # Some live registry rows include a leading service/control cell that has no
-        # corresponding header. Align data cells to the right edge of the header row.
+        # Some registry variants may contain a leading service/control cell that has
+        # no corresponding header. Keep normal rows aligned 1:1 and only compensate
+        # when there are more body cells than header cells.
         offset = max(0, len(values) - len(header_cells)) if header_cells else 0
         mapped: dict[str, str | None] = {key: None for key in _HEADER_KEYS}
         for idx, key in header_map.items():
