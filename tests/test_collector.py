@@ -56,3 +56,30 @@ def test_parse_registry_html_ignores_leading_service_cell():
     assert rows[0].installation_type.startswith("електроустановка")
     assert rows[0].connection_point_raw == "ПЛ-0.4 кВ КТП-208-11 Л-2"
     assert rows[0].requested_power_kw == 5.0
+
+
+def test_parse_registry_html_includes_row_header_cell_for_tu_number():
+    html = '''
+    <table>
+      <thead><tr>
+        <th>Номер ТУ</th><th>Дата Видачі ТУ</th><th>№ Договору (за наявності)</th><th>Дата Договору</th>
+        <th>Тип електроустановки, споживання/генерація</th><th>Черги введення потужності за роками</th>
+        <th>Точка забезпечення потужності (назва ПС, ТП,KТП тощо)</th><th>Напруга в точці приєднання</th>
+        <th>Потужність замовлена до приєднання</th><th>Тип приєднання</th><th>Назва територіальної одиниці ОСР</th>
+        <th>Дата надходження коштів від замовника</th>
+      </tr></thead>
+      <tbody><tr>
+        <th>ТУ 002185 030626 1 13 1</th><td>03-06-2026 12:06:00</td><td>ТУ 002185 030626 1 13 1</td><td>25-05-2026 12:05:00</td>
+        <td>електроустановка, призначена для споживання електричної енергії</td><td>Дані відсутні</td>
+        <td>ПЛ-0,4 кВ КТП-208-11 Л-2</td><td>0.23</td><td>5.0</td><td>стандартне приєднання</td><td>ПІВНІЧНИЙ РЕМ</td><td>Дані відсутні</td>
+      </tr></tbody>
+    </table>
+    '''
+    rows = parse_registry_html(html, "https://rtu.loe.lviv.ua/?page=1", 1, datetime.now(timezone.utc))
+    assert rows[0].tu_number == "ТУ 002185 030626 1 13 1"
+    assert rows[0].tu_date == "2026-06-03"
+    assert rows[0].installation_type == "електроустановка, призначена для споживання електричної енергії"
+    assert rows[0].connection_point_raw == "ПЛ-0.4 кВ КТП-208-11 Л-2"
+    assert rows[0].voltage_raw == "0.23"
+    assert rows[0].requested_power_kw == 5.0
+    assert rows[0].rem == "ПІВНІЧНИЙ РЕМ"
