@@ -8,9 +8,11 @@ def test_daily_workflow_uses_secret_runs_tests_and_pipeline():
 
     assert 'cron: "0 0 * * *"' in text or "cron: '0 0 * * *'" in text
     assert 'workflow_dispatch:' in text
+    assert 'pull_request:' in text
     assert 'secrets.DATABASE_URL' in text
     assert 'pytest' in text
     assert 'python scripts/update_grid_data.py' in text
+    assert "if: github.event_name != 'pull_request'" in text
     assert 'supabase.co' not in lowered
     assert 'postgresql://postgres:' not in lowered
 
