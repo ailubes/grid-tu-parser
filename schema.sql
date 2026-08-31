@@ -104,7 +104,7 @@ create table if not exists tu_row_versions (
     tu_number text,
     tu_date date,
     contract_number text,
-    contract_date date,
+    contract_date text,
     installation_type text,
     commissioning_stages text,
     connection_point_raw text,
@@ -112,7 +112,7 @@ create table if not exists tu_row_versions (
     requested_power_kw double precision,
     connection_type text,
     rem text,
-    payment_date date,
+    payment_date text,
     raw_payload jsonb not null default '{}'::jsonb,
     first_seen_at timestamptz not null,
     last_seen_at timestamptz not null
