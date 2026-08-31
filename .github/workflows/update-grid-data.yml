@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
+  pull_request:
 
 concurrency:
   group: grid-tu-daily-update
@@ -30,6 +31,7 @@ jobs:
         run: pytest -q
 
       - name: Update grid data
+        if: github.event_name != 'pull_request'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/update_grid_data.py
