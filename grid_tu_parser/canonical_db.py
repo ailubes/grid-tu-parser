@@ -131,8 +131,7 @@ def upsert_node_metrics_v2(conn: Any, run_id: int, nodes: Iterable[NodeAggregate
     nodes = list(nodes)
     if not nodes:
         return 0
-    metric_fields = getattr(db, "METRIC_FIELDS", db._METRIC_FIELDS)
-    fields = (*metric_fields, *V2_EXTRA_METRIC_FIELDS)
+    fields = (*db.METRIC_FIELDS, *V2_EXTRA_METRIC_FIELDS)
     columns = ", ".join(("run_id", "canonical_node_id", "snapshot_date", *fields))
     placeholders = ", ".join(["%s"] * (3 + len(fields)))
     updates = ", ".join(f"{field} = excluded.{field}" for field in (*fields, "snapshot_date"))
