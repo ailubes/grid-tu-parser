@@ -97,6 +97,37 @@ create table if not exists pipeline_runs (
     error text
 );
 
+create table if not exists tu_row_versions (
+    row_fingerprint text primary key,
+    logical_tu_key text not null,
+    source text not null,
+    tu_number text,
+    tu_date date,
+    contract_number text,
+    contract_date date,
+    installation_type text,
+    commissioning_stages text,
+    connection_point_raw text,
+    voltage_raw text,
+    requested_power_kw double precision,
+    connection_type text,
+    rem text,
+    payment_date date,
+    raw_payload jsonb not null default '{}'::jsonb,
+    first_seen_at timestamptz not null,
+    last_seen_at timestamptz not null
+);
+
+create table if not exists tu_observations (
+    observation_key text primary key,
+    run_id bigint not null references pipeline_runs(id),
+    row_fingerprint text not null references tu_row_versions(row_fingerprint),
+    source_page integer not null,
+    source_row_index integer not null,
+    fetched_at timestamptz not null,
+    unique (run_id, source_page, source_row_index)
+);
+
 create index if not exists idx_tu_raw_tu_date on tu_raw(tu_date);
 create index if not exists idx_tu_raw_last_seen_at on tu_raw(last_seen_at);
 create index if not exists idx_tu_parsed_node on tu_parsed(canonical_node_id);
@@ -106,3 +137,6 @@ create index if not exists idx_node_metrics_generation_pressure on node_metrics(
 create index if not exists idx_node_metrics_bess_pressure on node_metrics(bess_pressure desc);
 create index if not exists idx_grid_nodes_last_seen_at on grid_nodes(last_seen_at);
 create index if not exists idx_pipeline_runs_started_at on pipeline_runs(started_at desc);
+create index if not exists idx_tu_row_versions_logical_tu_key on tu_row_versions(logical_tu_key);
+create index if not exists idx_tu_row_versions_last_seen_at on tu_row_versions(last_seen_at);
+create index if not exists idx_tu_observations_run_id on tu_observations(run_id);
