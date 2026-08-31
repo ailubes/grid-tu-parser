@@ -7,14 +7,18 @@ from grid_tu_parser.models import RawTURecord
 
 
 class FakeCursor:
-    def __init__(self): self.calls = []
+    def __init__(self, confirmed_count=2):
+        self.calls = []
+        self.confirmed_count = confirmed_count
     def __enter__(self): return self
     def __exit__(self, *args): return False
-    def executemany(self, sql, params): self.calls.append((sql, list(params)))
+    def executemany(self, sql, params): self.calls.append(("many", sql, list(params)))
+    def execute(self, sql, params): self.calls.append(("one", sql, params))
+    def fetchone(self): return (self.confirmed_count,)
 
 
 class FakeConn:
-    def __init__(self): self.cursor_obj = FakeCursor()
+    def __init__(self, confirmed_count=2): self.cursor_obj = FakeCursor(confirmed_count)
     def cursor(self): return self.cursor_obj
 
 
@@ -31,18 +35,29 @@ def rec(page=1, row=1, contract_date="2026-05-25", tu_number="ТУ 123"):
 
 
 def test_shadow_writes_preserve_versions_and_observations():
-    conn = FakeConn()
+    conn = FakeConn(confirmed_count=2)
     a = rec(page=1, row=1)
     duplicate_elsewhere = replace(a, source_page=2, source_row_index=7)
     assert upsert_row_versions(conn, [a, duplicate_elsewhere]) == 1
     assert insert_observations(conn, 10, [a, duplicate_elsewhere]) == 2
-    row_sql, row_params = conn.cursor_obj.calls[0]
-    obs_sql, obs_params = conn.cursor_obj.calls[1]
+    row_kind, row_sql, row_params = conn.cursor_obj.calls[0]
+    obs_kind, obs_sql, obs_params = conn.cursor_obj.calls[1]
+    count_kind, count_sql, count_params = conn.cursor_obj.calls[2]
+    assert row_kind == "many"
     assert "on conflict (row_fingerprint) do update" in row_sql.lower()
     assert len(row_params) == 1
+    assert obs_kind == "many"
     assert "on conflict (observation_key) do nothing" in obs_sql.lower()
     assert len(obs_params) == 2
     assert obs_params[0][0] != obs_params[1][0]
+    assert count_kind == "one"
+    assert "count(*)" in count_sql.lower()
+    assert count_params == (10,)
+
+
+def test_insert_observations_returns_confirmed_database_count():
+    conn = FakeConn(confirmed_count=1)
+    assert insert_observations(conn, 77, [rec(1, 1), rec(1, 2)]) == 1
 
 
 def test_audit_distinguishes_exact_duplicates_from_changed_versions():
