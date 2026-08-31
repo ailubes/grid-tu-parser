@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Iterable
 
+from .canonical import AmbiguityAnalysis
 from .models import ParsedTURecord
 
 
@@ -56,6 +57,9 @@ class NodeAggregate:
     generation_pressure: int = 0
     load_pressure: int = 0
     bess_pressure: int = 0
+    ambiguous_tu_count: int = 0
+    ambiguous_capacity_min_mw: float | None = 0.0
+    ambiguous_capacity_max_mw: float | None = 0.0
 
 
 @dataclass
@@ -172,3 +176,13 @@ def aggregate_nodes(records: Iterable[ParsedTURecord], as_of: date | None = None
         invalid_date_records=invalid_dates,
     )
     return AggregationResult(as_of=as_of, nodes=nodes, stats=stats)
+
+
+def apply_ambiguity(nodes: Iterable[NodeAggregate], analysis: AmbiguityAnalysis) -> list[NodeAggregate]:
+    by_id = {node.canonical_node_id: node for node in nodes}
+    for node_id, bucket in analysis.by_node.items():
+        node = by_id.setdefault(node_id, NodeAggregate(canonical_node_id=node_id))
+        node.ambiguous_tu_count = bucket.ambiguous_tu_count
+        node.ambiguous_capacity_min_mw = bucket.capacity_min_mw
+        node.ambiguous_capacity_max_mw = bucket.capacity_max_mw
+    return [by_id[node_id] for node_id in sorted(by_id)]

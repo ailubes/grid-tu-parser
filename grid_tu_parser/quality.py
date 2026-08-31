@@ -178,10 +178,10 @@ def write_review_csv(rows: Iterable[dict[str, Any]], path: Any) -> None:
             })
 
 
-def render_console_report(report: dict[str, Any], *, top: int = 10) -> str:
+def render_console_report(report: dict[str, Any], *, top: int = 10, label: str = "QUALITY") -> str:
     summary = report["summary"]
     lines = [
-        f"QUALITY total={summary['total_records']} mapped={summary['mapped_records']} ({summary['mapped_pct']}%) review={summary['review_records']} ({summary['review_pct']}%) parse_errors={summary['parse_error_records']} unknown_activity={summary['unknown_activity_records']}",
+        f"{label} total={summary['total_records']} mapped={summary['mapped_records']} ({summary['mapped_pct']}%) review={summary['review_records']} ({summary['review_pct']}%) parse_errors={summary['parse_error_records']} unknown_activity={summary['unknown_activity_records']}",
         "TOP FLAGS",
     ]
     for item in report["flag_counts"][:top]:

@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 from grid_tu_parser import database as db
 from grid_tu_parser.pipeline import run_update
 from grid_tu_parser.quality import analyze_quality, render_console_report
-from grid_tu_parser.quality_db import fetch_quality_records
+from grid_tu_parser.quality_db import fetch_quality_records, fetch_quality_records_v2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,6 +46,20 @@ def render_integrity_report(summary) -> str:
     return "\n".join(lines)
 
 
+def _fmt_range(value: float | None) -> str:
+    return "unknown" if value is None else str(round(value, 6)).rstrip("0").rstrip(".")
+
+
+def render_canonical_report(summary) -> str:
+    return (
+        f"CANONICAL run_id={summary.run_id} canonical={summary.canonical_count} "
+        f"ambiguous={summary.ambiguous_count} metadata_collapsed={summary.metadata_collapsed_count} "
+        f"ambiguous_min_mw={_fmt_range(summary.ambiguous_capacity_min_mw)} "
+        f"ambiguous_max_mw={_fmt_range(summary.ambiguous_capacity_max_mw)} "
+        f"unassigned_ambiguous={summary.unassigned_ambiguous_count}"
+    )
+
+
 def main() -> int:
     args = build_parser().parse_args()
     database_url = os.environ.get("DATABASE_URL")
@@ -74,14 +88,18 @@ def main() -> int:
         f"nodes={summary.node_count} review={summary.review_count}"
     )
     print(render_integrity_report(summary))
+    print(render_canonical_report(summary))
 
     quality_conn = psycopg.connect(database_url, connect_timeout=20)
     try:
         quality_rows = fetch_quality_records(quality_conn)
+        quality_v2_rows = fetch_quality_records_v2(quality_conn, summary.run_id)
     finally:
         quality_conn.close()
     quality_report = analyze_quality(quality_rows, example_limit=10, pattern_limit=50)
+    quality_v2_report = analyze_quality(quality_v2_rows, example_limit=10, pattern_limit=50)
     print(render_console_report(quality_report, top=20))
+    print(render_console_report(quality_v2_report, top=20, label="QUALITY_V2"))
     return 0
 
 

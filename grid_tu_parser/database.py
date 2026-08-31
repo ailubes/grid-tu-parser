@@ -157,7 +157,7 @@ def upsert_nodes(conn: Any, parsed_records: Iterable[ParsedTURecord], seen_at: d
     return len(params)
 
 
-_METRIC_FIELDS = (
+METRIC_FIELDS = (
     "generation_mw", "load_mw", "bess_mw", "other_mw",
     "generation_tu_count", "load_tu_count", "bess_tu_count", "other_tu_count",
     "generation_3m_mw", "generation_6m_mw", "generation_12m_mw",
@@ -168,21 +168,22 @@ _METRIC_FIELDS = (
     "generation_load_ratio", "net_tu_imbalance_mw", "bess_share", "review_count", "data_confidence",
     "generation_pressure", "load_pressure", "bess_pressure",
 )
+_METRIC_FIELDS = METRIC_FIELDS
 
 
 def upsert_node_metrics(conn: Any, nodes: Iterable[NodeAggregate], snapshot_date: date) -> int:
     nodes = list(nodes)
     if not nodes:
         return 0
-    columns = ", ".join(("canonical_node_id", "snapshot_date", *_METRIC_FIELDS))
-    placeholders = ", ".join(["%s"] * (2 + len(_METRIC_FIELDS)))
-    updates = ", ".join(f"{field} = excluded.{field}" for field in _METRIC_FIELDS)
+    columns = ", ".join(("canonical_node_id", "snapshot_date", *METRIC_FIELDS))
+    placeholders = ", ".join(["%s"] * (2 + len(METRIC_FIELDS)))
+    updates = ", ".join(f"{field} = excluded.{field}" for field in METRIC_FIELDS)
     sql = f"""
         insert into node_metrics ({columns}) values ({placeholders})
         on conflict (canonical_node_id, snapshot_date) do update set {updates}, created_at = now()
     """
     params = [
-        (node.canonical_node_id, snapshot_date, *(getattr(node, field) for field in _METRIC_FIELDS))
+        (node.canonical_node_id, snapshot_date, *(getattr(node, field) for field in METRIC_FIELDS))
         for node in nodes
     ]
     with conn.cursor() as cur:

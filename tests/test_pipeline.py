@@ -49,10 +49,13 @@ def test_run_update_orchestrates_collection_persistence_and_daily_snapshot(monke
     monkeypatch.setattr(pipeline.db, "start_pipeline_run", lambda conn, source: calls.append(("start", source)) or 42)
     monkeypatch.setattr(pipeline.integrity_db, "upsert_row_versions", lambda conn, rows: calls.append(("row_versions", len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.integrity_db, "insert_observations", lambda conn, run_id, rows: calls.append(("observations", run_id, len(rows))) or len(rows))
+    monkeypatch.setattr(pipeline.canonical_db, "upsert_snapshot_resolutions", lambda conn, run_id, rows: calls.append(("resolutions", run_id, len(rows))) or len(rows))
+    monkeypatch.setattr(pipeline.canonical_db, "upsert_canonical_parsed", lambda conn, run_id, rows: calls.append(("canonical_parsed", run_id, len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.db, "upsert_raw_records", lambda conn, rows: calls.append(("raw", len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.db, "upsert_parsed_records", lambda conn, rows: calls.append(("parsed", len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.db, "upsert_nodes", lambda conn, rows, seen_at: calls.append(("nodes", len(rows))) or 1)
     monkeypatch.setattr(pipeline.db, "upsert_node_metrics", lambda conn, nodes, snapshot_date: calls.append(("metrics", len(nodes), snapshot_date)) or len(nodes))
+    monkeypatch.setattr(pipeline.canonical_db, "upsert_node_metrics_v2", lambda conn, run_id, nodes, snapshot_date: calls.append(("metrics_v2", run_id, len(nodes), snapshot_date)) or len(nodes))
     monkeypatch.setattr(pipeline.db, "finish_pipeline_run", lambda conn, run_id, status, counts, error=None: calls.append(("finish", run_id, status, counts, error)))
 
     summary = pipeline.run_update(conn, "https://example.test", as_of=date(2026, 8, 30))
@@ -62,10 +65,15 @@ def test_run_update_orchestrates_collection_persistence_and_daily_snapshot(monke
     assert summary.node_count == 1
     assert summary.observation_count == 2
     assert summary.row_version_count == 2
+    assert summary.canonical_count == 2
+    assert summary.ambiguous_count == 0
     assert summary.snapshot_date == date(2026, 8, 30)
     assert calls[0] == ("start", "lvivoblenergo")
     assert ("observations", 42, 2) in calls
+    assert ("resolutions", 42, 2) in calls
+    assert ("canonical_parsed", 42, 2) in calls
     assert ("metrics", 1, date(2026, 8, 30)) in calls
+    assert ("metrics_v2", 42, 1, date(2026, 8, 30)) in calls
     assert calls[-1][0:3] == ("finish", 42, "success")
     assert conn.commits == 2
     assert conn.rollbacks == 0
@@ -87,3 +95,30 @@ def test_run_update_rolls_back_data_and_marks_failed_run(monkeypatch):
     assert conn.rollbacks == 1
     assert calls[0][0:2] == (9, "failed")
     assert "registry unavailable" in calls[0][3]
+
+
+def test_v2_write_failure_rolls_back_and_marks_run_failed(monkeypatch):
+    import grid_tu_parser.pipeline as pipeline
+
+    conn = FakeConnection()
+    records = [raw("1", "генерація", 1000, "ПС 35/10 кВ №149 Тартаків", 1)]
+    calls = []
+    monkeypatch.setattr(pipeline, "collect_pages", lambda base_url: records)
+    monkeypatch.setattr(pipeline.db, "start_pipeline_run", lambda conn, source: 77)
+    monkeypatch.setattr(pipeline.integrity_db, "upsert_row_versions", lambda conn, rows: len(rows))
+    monkeypatch.setattr(pipeline.integrity_db, "insert_observations", lambda conn, run_id, rows: len(rows))
+    monkeypatch.setattr(pipeline.canonical_db, "upsert_snapshot_resolutions", lambda conn, run_id, rows: len(rows))
+    monkeypatch.setattr(pipeline.canonical_db, "upsert_canonical_parsed", lambda conn, run_id, rows: len(rows))
+    monkeypatch.setattr(pipeline.db, "upsert_raw_records", lambda conn, rows: len(rows))
+    monkeypatch.setattr(pipeline.db, "upsert_parsed_records", lambda conn, rows: len(rows))
+    monkeypatch.setattr(pipeline.db, "upsert_nodes", lambda conn, rows, seen_at: 1)
+    monkeypatch.setattr(pipeline.db, "upsert_node_metrics", lambda conn, nodes, snapshot_date: len(nodes))
+    monkeypatch.setattr(pipeline.canonical_db, "upsert_node_metrics_v2", lambda *args: (_ for _ in ()).throw(RuntimeError("v2 write failed")))
+    monkeypatch.setattr(pipeline.db, "finish_pipeline_run", lambda conn, run_id, status, counts, error=None: calls.append((run_id, status, error)))
+
+    with pytest.raises(RuntimeError, match="v2 write failed"):
+        pipeline.run_update(conn, "https://example.test", as_of=date(2026, 8, 30))
+
+    assert conn.rollbacks == 1
+    assert calls[-1][0:2] == (77, "failed")
+    assert "v2 write failed" in calls[-1][2]
