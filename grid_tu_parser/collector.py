@@ -22,12 +22,16 @@ class CollectorError(RuntimeError):
 _HEADER_KEYS = {
     "tu_number": ("номер ту",),
     "tu_date": ("дата видачі ту", "дата видачи ту"),
+    "contract_number": ("№ договору", "no договору", "номер договору"),
+    "contract_date": ("дата договору",),
     "installation_type": ("тип електроустановки",),
+    "commissioning_stages": ("черги введення потужності",),
     "connection_point_raw": ("точка забезпечення потужності",),
     "voltage_raw": ("напруга в точці приєднання",),
     "requested_power_kw": ("потужність замовлена до приєднання",),
     "connection_type": ("тип приєднання",),
     "rem": ("назва територіальної одиниці оср",),
+    "payment_date": ("дата надходження коштів",),
 }
 
 
@@ -85,9 +89,8 @@ def parse_registry_html(
             header_map[idx] = key
 
     records: list[RawTURecord] = []
-    for row in table.find_all("tr"):
-        if row is header_row:
-            continue
+    body_rows = [row for row in table.find_all("tr") if row is not header_row]
+    for source_row_index, row in enumerate(body_rows, start=1):
         cells = row.find_all(["th", "td"], recursive=False)
         if not cells:
             continue
@@ -108,6 +111,7 @@ def parse_registry_html(
                 source="lvivoblenergo",
                 source_url=source_url,
                 source_page=source_page,
+                source_row_index=source_row_index,
                 fetched_at=fetched_at,
                 tu_number=mapped["tu_number"],
                 tu_date=_parse_date(mapped["tu_date"]),
@@ -117,6 +121,10 @@ def parse_registry_html(
                 requested_power_kw=_parse_power(mapped["requested_power_kw"]),
                 connection_type=mapped["connection_type"],
                 rem=mapped["rem"],
+                contract_number=mapped["contract_number"],
+                contract_date=_parse_date(mapped["contract_date"]),
+                commissioning_stages=mapped["commissioning_stages"],
+                payment_date=_parse_date(mapped["payment_date"]),
             )
         )
     return records
