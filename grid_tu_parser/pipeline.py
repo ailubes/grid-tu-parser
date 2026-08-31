@@ -5,8 +5,10 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from . import database as db
+from . import integrity_db
 from .aggregate import aggregate_nodes
 from .collector import collect_pages
+from .integrity_audit import build_integrity_audit
 from .parser import parse_record
 
 
@@ -19,6 +21,9 @@ class PipelineSummary:
     mapped_count: int
     node_count: int
     review_count: int
+    observation_count: int
+    row_version_count: int
+    integrity_audit: dict[str, Any]
 
 
 def run_update(conn: Any, base_url: str = "https://rtu.loe.lviv.ua/", *, as_of: date | None = None) -> PipelineSummary:
@@ -26,10 +31,22 @@ def run_update(conn: Any, base_url: str = "https://rtu.loe.lviv.ua/", *, as_of: 
     run_id = db.start_pipeline_run(conn, source)
     conn.commit()
 
-    counts = {"raw": 0, "parsed": 0, "mapped": 0, "nodes": 0, "review": 0}
+    counts = {
+        "raw": 0,
+        "parsed": 0,
+        "mapped": 0,
+        "nodes": 0,
+        "review": 0,
+        "observations": 0,
+        "row_versions": 0,
+    }
     try:
         raw_records = collect_pages(base_url)
         counts["raw"] = len(raw_records)
+        integrity_audit = build_integrity_audit(raw_records)
+        counts["row_versions"] = integrity_db.upsert_row_versions(conn, raw_records)
+        counts["observations"] = integrity_db.insert_observations(conn, run_id, raw_records)
+
         parsed_records = [parse_record(record) for record in raw_records]
         counts["parsed"] = len(parsed_records)
         counts["mapped"] = sum(1 for record in parsed_records if record.canonical_node_id)
@@ -55,6 +72,9 @@ def run_update(conn: Any, base_url: str = "https://rtu.loe.lviv.ua/", *, as_of: 
             mapped_count=counts["mapped"],
             node_count=counts["nodes"],
             review_count=counts["review"],
+            observation_count=counts["observations"],
+            row_version_count=counts["row_versions"],
+            integrity_audit=integrity_audit,
         )
     except Exception as exc:
         conn.rollback()
