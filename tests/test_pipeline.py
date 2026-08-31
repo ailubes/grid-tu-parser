@@ -17,11 +17,12 @@ class FakeConnection:
         self.rollbacks += 1
 
 
-def raw(number, activity, power, point):
+def raw(number, activity, power, point, row_index=1):
     return RawTURecord(
         source="lvivoblenergo",
         source_url="https://example.test",
         source_page=1,
+        source_row_index=row_index,
         fetched_at=datetime(2026, 8, 30, tzinfo=timezone.utc),
         tu_number=number,
         tu_date="2026-08-29",
@@ -39,13 +40,15 @@ def test_run_update_orchestrates_collection_persistence_and_daily_snapshot(monke
 
     conn = FakeConnection()
     records = [
-        raw("1", "генерація", 1000, "ПС 35/10 кВ №149 Тартаків"),
-        raw("2", "УЗЕ", 500, "ПС 35/10 кВ №149 Тартаків"),
+        raw("1", "генерація", 1000, "ПС 35/10 кВ №149 Тартаків", 1),
+        raw("2", "УЗЕ", 500, "ПС 35/10 кВ №149 Тартаків", 2),
     ]
     calls = []
 
     monkeypatch.setattr(pipeline, "collect_pages", lambda base_url: records)
     monkeypatch.setattr(pipeline.db, "start_pipeline_run", lambda conn, source: calls.append(("start", source)) or 42)
+    monkeypatch.setattr(pipeline.integrity_db, "upsert_row_versions", lambda conn, rows: calls.append(("row_versions", len(rows))) or len(rows))
+    monkeypatch.setattr(pipeline.integrity_db, "insert_observations", lambda conn, run_id, rows: calls.append(("observations", run_id, len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.db, "upsert_raw_records", lambda conn, rows: calls.append(("raw", len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.db, "upsert_parsed_records", lambda conn, rows: calls.append(("parsed", len(rows))) or len(rows))
     monkeypatch.setattr(pipeline.db, "upsert_nodes", lambda conn, rows, seen_at: calls.append(("nodes", len(rows))) or 1)
@@ -57,8 +60,11 @@ def test_run_update_orchestrates_collection_persistence_and_daily_snapshot(monke
     assert summary.raw_count == 2
     assert summary.parsed_count == 2
     assert summary.node_count == 1
+    assert summary.observation_count == 2
+    assert summary.row_version_count == 2
     assert summary.snapshot_date == date(2026, 8, 30)
     assert calls[0] == ("start", "lvivoblenergo")
+    assert ("observations", 42, 2) in calls
     assert ("metrics", 1, date(2026, 8, 30)) in calls
     assert calls[-1][0:3] == ("finish", 42, "success")
     assert conn.commits == 2
