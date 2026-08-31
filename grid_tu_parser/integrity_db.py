@@ -78,4 +78,8 @@ def insert_observations(conn: Any, run_id: int, records: Iterable[RawTURecord]) 
     ) for record in records]
     with conn.cursor() as cur:
         cur.executemany(sql, params)
-    return len(records)
+        cur.execute("select count(*) from tu_observations where run_id = %s", (run_id,))
+        row = cur.fetchone()
+    if not row:
+        raise RuntimeError("Could not confirm TU observation count")
+    return int(row[0])
