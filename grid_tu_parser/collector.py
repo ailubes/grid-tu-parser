@@ -96,9 +96,6 @@ def parse_registry_html(
             continue
 
         values = [normalize_text(cell.get_text(" ", strip=True)) for cell in cells]
-        # Some registry variants may contain a leading service/control cell that has
-        # no corresponding header. Keep normal rows aligned 1:1 and only compensate
-        # when there are more body cells than header cells.
         offset = max(0, len(values) - len(header_cells)) if header_cells else 0
         mapped: dict[str, str | None] = {key: None for key in _HEADER_KEYS}
         for idx, key in header_map.items():
@@ -122,9 +119,9 @@ def parse_registry_html(
                 connection_type=mapped["connection_type"],
                 rem=mapped["rem"],
                 contract_number=mapped["contract_number"],
-                contract_date=_parse_date(mapped["contract_date"]),
+                contract_date=mapped["contract_date"],
                 commissioning_stages=mapped["commissioning_stages"],
-                payment_date=_parse_date(mapped["payment_date"]),
+                payment_date=mapped["payment_date"],
             )
         )
     return records
