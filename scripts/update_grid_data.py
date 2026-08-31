@@ -24,6 +24,28 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def render_integrity_report(summary) -> str:
+    audit = summary.integrity_audit
+    lines = [
+        "INTEGRITY "
+        f"fetched={audit['fetched_rows']} observations={summary.observation_count} "
+        f"row_versions={audit['unique_row_versions']} logical_tus={audit['unique_logical_tus']} "
+        f"legacy_unique={audit['legacy_unique_records']} legacy_loss={audit['legacy_collision_loss']} "
+        f"duplicates={audit['duplicate_observations']} multi_version_tus={audit['logical_tus_with_multiple_versions']}"
+    ]
+    collisions = audit.get("top_legacy_collision_groups") or []
+    if collisions:
+        lines.append("LEGACY COLLISIONS")
+        for item in collisions[:20]:
+            differs = ",".join(item.get("differing_fields") or []) or "exact_duplicate"
+            tu_numbers = ",".join(item.get("tu_numbers") or []) or "<NO_TU>"
+            lines.append(
+                f"  {tu_numbers}: observations={item['observation_count']} "
+                f"versions={item['distinct_row_versions']} differs={differs}"
+            )
+    return "\n".join(lines)
+
+
 def main() -> int:
     args = build_parser().parse_args()
     database_url = os.environ.get("DATABASE_URL")
@@ -51,6 +73,7 @@ def main() -> int:
         f"raw={summary.raw_count} parsed={summary.parsed_count} mapped={summary.mapped_count} "
         f"nodes={summary.node_count} review={summary.review_count}"
     )
+    print(render_integrity_report(summary))
 
     quality_conn = psycopg.connect(database_url, connect_timeout=20)
     try:
