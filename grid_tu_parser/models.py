@@ -19,6 +19,11 @@ class RawTURecord:
     requested_power_kw: float | None = None
     connection_type: str | None = None
     rem: str | None = None
+    source_row_index: int = 0
+    contract_number: str | None = None
+    contract_date: str | None = None
+    commissioning_stages: str | None = None
+    payment_date: str | None = None
 
 
 @dataclass
