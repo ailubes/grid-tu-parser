@@ -80,6 +80,18 @@ python scripts/update_grid_data.py
 
 The command applies `schema.sql`, collects the Lvivoblenergo registry, parses and upserts TU rows, recalculates node metrics, writes the daily snapshot, and records the pipeline run status.
 
+### Canonical Snapshot v2 - B1 shadow rollout
+
+Canonical Snapshot v2 is shadow-only during B1. Legacy `node_metrics` remain the current consumer source while the same registry run also writes lossless observations, per-run TU resolution, canonical parsed rows, and `node_metrics_v2`.
+
+The canonical current state is the latest **successful** run, not simply the highest attempted run. Rows absent from that latest successful snapshot do not contribute to current v2 metrics.
+
+Material conflicts in `tu_date`, `installation_type`, `connection_point_raw`, `voltage_raw`, `requested_power_kw`, or `connection_type` are not guessed. Those logical TUs are excluded from canonical MW/pressure and reported separately as ambiguity with `min/max` capacity. Metadata-only variants collapse to one canonical TU while all source row versions remain preserved.
+
+Production output includes `CANONICAL ...` and `QUALITY_V2 ...` blocks alongside the existing `INTEGRITY ...` and legacy `QUALITY ...` output.
+
+After 2-3 successful production snapshots, compare legacy and v2 TU counts, mapped/review rates, node counts, Generation/Load/BESS MW, pressure distribution, and ambiguity before promoting any dashboard or API consumer to v2.
+
 ### GitHub Actions deployment
 
 The workflow `.github/workflows/update-grid-data.yml` runs every day at `00:00 UTC` and can also be started manually with `workflow_dispatch`.
