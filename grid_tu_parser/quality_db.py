@@ -3,9 +3,16 @@ from __future__ import annotations
 from typing import Any
 
 
+def _column_name(item: Any) -> str:
+    name = getattr(item, "name", None)
+    if name is not None:
+        return str(name)
+    return str(item[0])
+
+
 def _rows_to_dicts(cur: Any, rows: list[Any]) -> list[dict[str, Any]]:
     description = cur.description or []
-    columns = [getattr(item, "name", item[0]) for item in description]
+    columns = [_column_name(item) for item in description]
     result: list[dict[str, Any]] = []
     for row in rows:
         if isinstance(row, dict):
